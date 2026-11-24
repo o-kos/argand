@@ -97,3 +97,25 @@ fn deleting_digits_preserves_numbers_with_space_grouping() {
         }
     }
 }
+
+#[test]
+fn human_utc_rounds_at_milliseconds_and_localizes_without_changing_storage() {
+    let time = argand_core::RecordingTime::parse("2026-11-23T23:59:59.999999Z").unwrap();
+    for (locale, fraction) in [("en-US", "."), ("ru-RU", ","), ("de-DE", ",")] {
+        let numbers = Numbers::new(locale);
+        let text = numbers.utc(time, 9);
+        assert_eq!(text, format!("2026-11-24 00:00:00{fraction}000Z"));
+        assert_eq!(
+            numbers.parse_utc(&text).unwrap().format(3),
+            "2026-11-24T00:00:00.000Z"
+        );
+        assert_eq!(
+            numbers.axis_label(
+                "11-24 00:00:00.123",
+                argand_core::axis::AxisKind::UtcTime(time)
+            ),
+            format!("11-24 00:00:00{fraction}123")
+        );
+    }
+    assert_eq!(time.format(6), "2026-11-23T23:59:59.999999Z");
+}

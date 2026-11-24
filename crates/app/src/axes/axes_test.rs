@@ -350,3 +350,54 @@ fn utc_rulers_keep_concise_ticks_date_context_and_readable_gutters() {
         assert!(frame.time.iter().any(|tick| tick.label.contains("11-24")));
     }
 }
+
+#[test]
+fn gui_time_ticks_stop_at_milliseconds_in_both_orientations() {
+    for orientation in [
+        crate::navigation::orientation::Mode::Horizontal,
+        crate::navigation::orientation::Mode::Vertical,
+    ] {
+        for mode in [
+            crate::navigation::time_ruler::Mode::Clock,
+            crate::navigation::time_ruler::Mode::Seconds,
+        ] {
+            for start in [
+                None,
+                argand_core::RecordingTime::parse("2026-11-23T23:59:59.999Z"),
+            ] {
+                let extents = Extents {
+                    orientation,
+                    seconds: (0., 0.002),
+                    time: crate::navigation::time_ruler::Ruler {
+                        mode,
+                        start,
+                        ..HFDL.time
+                    },
+                    ..HFDL
+                };
+                let frame = measure(panel(1200., 800.), extents);
+                assert_millisecond_ticks(&frame);
+            }
+        }
+    }
+}
+
+fn assert_millisecond_ticks(frame: &Frame) {
+    let mut labels = std::collections::HashSet::new();
+    for tick in &frame.time {
+        assert!((tick.value * 1000. - (tick.value * 1000.).round()).abs() < 1e-8);
+        if tick.label.is_empty() {
+            continue;
+        }
+        assert!(
+            labels.insert(tick.label.clone()),
+            "duplicate {}",
+            tick.label
+        );
+        let fraction = tick
+            .label
+            .split_once('.')
+            .map_or("", |(_, tail)| tail.trim_end_matches(" s"));
+        assert!(fraction.len() <= 3, "{}", tick.label);
+    }
+}

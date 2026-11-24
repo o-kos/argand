@@ -66,11 +66,12 @@ impl Scale {
             return Mode::Samples.counters(span, self.rate, self.total, self.seconds_per_pixel);
         }
         if let Some(start) = self.start {
-            let precision = ((self.rate.log10().ceil().max(3.)) as usize).min(9);
+            let precision = 3;
             for (value, sample) in values[..2].iter_mut().zip([span.start(), span.end()]) {
-                *value = start
-                    .shifted_samples(sample, self.rate)
-                    .map_or_else(|| format!("#{sample}"), |time| time.format(precision));
+                *value = start.shifted_samples(sample, self.rate).map_or_else(
+                    || format!("#{sample}"),
+                    |time| crate::numbers::current().utc(time, precision),
+                );
             }
         }
         values
@@ -80,7 +81,7 @@ impl Scale {
         self.start.is_some()
             && argand_core::SampleSpan::between(0, self.total.max(1))
                 .and_then(|whole| super::time_ruler::exact_time_precision(whole, self.rate))
-                .is_none_or(|precision| precision > 9)
+                .is_none()
     }
 
     /// A band's edges in the ruler's unit and its width with an independent unit.
@@ -166,9 +167,7 @@ impl Scale {
             true => i128::from(steps),
             false => {
                 let places = if self.start.is_some() && field != Field::TimeLength {
-                    text.split_once('.').map_or(0, |(_, tail)| {
-                        tail.bytes().take_while(u8::is_ascii_digit).count()
-                    })
+                    decimals(numbers, &text.replace('.', numbers.decimal()))
                 } else {
                     decimals(numbers, text)
                 };
@@ -242,7 +241,7 @@ impl Scale {
             && !text.starts_with('#')
             && let Some(start) = self.start
         {
-            let time = argand_core::RecordingTime::parse(text)?;
+            let time = numbers.parse_utc(text)?;
             return whole(time.seconds_since(start) * self.rate);
         }
         let (index, text) = match text.strip_prefix('#') {

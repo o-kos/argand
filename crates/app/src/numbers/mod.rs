@@ -106,7 +106,7 @@ impl Numbers {
     pub fn axis_label(&self, text: &str, kind: argand_core::axis::AxisKind) -> String {
         use argand_core::axis::AxisKind;
         match kind {
-            AxisKind::UtcTime(_) => text.to_owned(),
+            AxisKind::UtcTime(_) => self.clock(text),
             AxisKind::PreciseTime | AxisKind::Time => {
                 let clock = if text.contains(':') {
                     text.to_owned()
@@ -119,6 +119,16 @@ impl Numbers {
             AxisKind::Samples => self.format(text.trim_start_matches('#'), true),
             _ => self.format(text, true),
         }
+    }
+
+    /// Human UTC presentation keeps canonical storage formatting at the core seam.
+    pub fn utc(&self, time: argand_core::RecordingTime, precision: usize) -> String {
+        self.clock(&time.format(precision.min(3)).replace('T', " "))
+    }
+
+    pub fn parse_utc(&self, text: &str) -> Option<argand_core::RecordingTime> {
+        let text = self.ascii_digits(text.trim()).replace(&self.decimal, ".");
+        argand_core::RecordingTime::parse(&text.replace(' ', "T"))
     }
 
     pub fn digits(&self) -> [char; 10] {

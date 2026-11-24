@@ -59,8 +59,8 @@ impl Mode {
     ///
     /// Samples name the first and the last sample selected, the way the ruler
     /// numbers them. Clock and seconds give the boundaries in time with the
-    /// decimals one pixel of `seconds_per_pixel` tells apart, never more than one
-    /// sample needs, and fall back to samples where seconds cannot tell
+    /// decimals one pixel of `seconds_per_pixel` tells apart, capped at milliseconds,
+    /// and fall back to samples where floating-point seconds cannot tell
     /// neighbouring samples apart. The clock keeps the fields the capture's
     /// `total` samples need, so its width stays while an edge is dragged.
     pub fn counters(
@@ -71,17 +71,15 @@ impl Mode {
         seconds_per_pixel: f64,
     ) -> [String; 3] {
         let whole = argand_core::SampleSpan::between(0, total.max(span.end())).unwrap_or(span);
-        let precision = self.exact_precision(whole, rate).map(|exact| {
-            pixel_precision(seconds_per_pixel).map_or(exact, |pixel| pixel.min(exact))
-        });
-        let Some(precision) = precision else {
+        if self.writes_samples(rate, whole.end()) {
             let index = |sample: u64| format!("#{}", crate::numbers::number(sample));
             return [
                 index(span.start()),
                 index(span.end() - 1),
                 crate::numbers::number(span.count()),
             ];
-        };
+        }
+        let precision = crate::navigation::time_precision(seconds_per_pixel).min(3);
         let duration = whole.end() as f64 / rate;
         let time = |seconds: f64| match self {
             Self::Clock => crate::numbers::current().axis_label(
@@ -110,25 +108,11 @@ impl Mode {
 
     /// The decimals that tell every sample of `whole` apart in this mode, none where only indexes do.
     fn exact_precision(self, whole: argand_core::SampleSpan, rate: f64) -> Option<usize> {
-        exact_time_precision(whole, rate).filter(|&precision| match self {
-            Self::Samples => false,
-            Self::Clock => precision <= CLOCK_DECIMALS,
-            Self::Seconds => true,
-        })
+        (self != Self::Samples)
+            .then(|| exact_time_precision(whole, rate))
+            .flatten()
     }
 }
-
-/// The decimals one pixel of `seconds_per_pixel` tells apart, at least milliseconds, none for no usable pixel.
-///
-/// Unlike the ruler's own readouts this is not capped at nanoseconds, since a
-/// selection's values stop only at what one sample needs.
-fn pixel_precision(seconds_per_pixel: f64) -> Option<usize> {
-    (seconds_per_pixel.is_finite() && seconds_per_pixel > 0.)
-        .then(|| (-seconds_per_pixel.log10()).ceil().max(3.) as usize)
-}
-
-/// The most decimals the clock format prints, which `argand_core::axis::format_time` caps.
-const CLOCK_DECIMALS: usize = 9;
 
 /// The decimals that tell every sample of `span` apart in seconds, or nothing where `f64` cannot.
 ///
@@ -172,12 +156,12 @@ impl Ruler {
     }
 
     pub fn readout(self, time: f64, span: f64, pixels: f64, fraction: f64) -> String {
-        let precision = crate::navigation::time_precision(span / pixels);
+        let precision = crate::navigation::time_precision(span / pixels).min(3);
         if let Some(start) = self.start {
             let rate = self.view.len as f64 / span;
             let exact = argand_core::SampleSpan::between(0, self.total.max(1))
                 .and_then(|whole| exact_time_precision(whole, rate));
-            if exact.is_none_or(|precision| precision > 9) {
+            if exact.is_none() {
                 return Self {
                     start: None,
                     mode: Mode::Samples,
@@ -185,9 +169,10 @@ impl Ruler {
                 }
                 .readout(time, span, pixels, fraction);
             }
-            return start
-                .shifted_seconds(time)
-                .map_or_else(|| "Out of range".into(), |time| time.format(precision));
+            return start.shifted_seconds(time).map_or_else(
+                || "Out of range".into(),
+                |time| crate::numbers::current().utc(time, precision),
+            );
         }
         match self.mode {
             Mode::Clock => crate::numbers::current().axis_label(

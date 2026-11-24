@@ -7,6 +7,14 @@ use std::path::PathBuf;
 
 /// A shell under the toolkit's root, which the popover layer needs, with a described capture.
 fn open(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
+    open_at_rate(cx, 1_000., false)
+}
+
+fn open_at_rate(
+    cx: &mut TestAppContext,
+    rate: f64,
+    absolute: bool,
+) -> (Entity<Shell>, &mut gpui_kit::VisualTestContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
         settings_ui::init(cx);
@@ -35,9 +43,11 @@ fn open(cx: &mut TestAppContext) -> (Entity<Shell>, &mut gpui_kit::VisualTestCon
         };
         file.state.document.apply(Update::Opened(
             SignalMeta {
-                sample_rate: 1_000.0,
+                sample_rate: rate,
                 center_freq: 0.0,
-                recording_start: None,
+                recording_start: absolute.then(|| {
+                    argand_core::RecordingTime::parse("2026-11-23T23:59:59.999Z").unwrap()
+                }),
                 sample_type: SampleType::new(Domain::Iq, SampleFormat::I16),
                 len_samples: 10_000,
                 container: "raw",
@@ -413,4 +423,26 @@ fn another_document_opened_under_the_panel_closes_it(cx: &mut TestAppContext) {
         Selection::default(),
         "nothing carried over"
     );
+}
+
+#[gpui_kit::test]
+fn unchanged_millisecond_drafts_keep_high_rate_samples_on_blur_and_enter(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    let (shell, cx) = open_at_rate(cx, 1_000_000., true);
+    for absolute in [false, true] {
+        shell.update_in(cx, |shell, _, _| {
+            shell.selection = span(1001, 8003);
+            shell.session.time_ruler = crate::navigation::time_ruler::Mode::Clock;
+            shell.session.time_origin = if absolute {
+                crate::navigation::time_ruler::Origin::Absolute
+            } else {
+                crate::navigation::time_ruler::Origin::Relative
+            };
+        });
+        toggle(cx, &shell);
+        assert!(!texts(cx, &shell)[0].starts_with('#'));
+        keys(cx, "tab tab enter");
+        assert_eq!(selected(cx, &shell).time, span(1001, 8003));
+        assert!(!panel_open(cx, &shell));
+    }
 }

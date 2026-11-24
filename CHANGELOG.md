@@ -24,6 +24,8 @@ promise applies to.
 
 ### Changed
 
+- Human time labels and selection fields use at most millisecond precision, localized fractions and a space between UTC date and time. Exact sample coordinates and metadata storage are preserved (#265).
+
 - Absolute time ruler marks omit the redundant `Z` suffix while retaining UTC date context.
 
 - Recording scales use aligned outlined controls, labelled scale groups and a standard UTC date/time picker. Missing embedded start defaults to supported filesystem creation time. Main and ruler menus share consistent mode names and shortcut labels (#265).

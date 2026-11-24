@@ -237,8 +237,8 @@ Time puts its start and end below the selection and its length above it, or left
 it in vertical orientation; a band or a rectangle puts its high and low edges left of it and its
 width right of it, or above and below it with frequency running right. A selection that spans
 the other axis therefore has its badges at the plot's edges. `time_ruler::Mode::counters` gives the time values
-in the ruler's mode with the decimals one pixel of the visible time tells apart, as the Alt
-badges do, never more than one sample needs, the clock with the fields the capture's own
+in the ruler's mode with at most three fractional digits, as the Alt
+badges do, the clock with the fields the capture's own
 length needs; `Scale::band_texts` gives the band's as numbers in the frequency ruler's unit, which
 only the ruler names for its edges. The width independently chooses Hz/kHz/MHz and
 includes the unit, also in its badge input and selection-panel field. Its bare
@@ -434,7 +434,11 @@ Absolute time adds a physical sample offset to an integer UTC origin. Ruler tick
 use concise time-of-day text, a date context beside the UTC caption, and month/day
 on ticks across a date transition. Tick text omits the redundant `Z` suffix because
 the ruler caption identifies UTC. Cursor and selection endpoints use full UTC
-calendar timestamps with offset precision independent of millisecond metadata
-storage. Selection durations remain relative. Timestamp entry subtracts integer
+calendar timestamps with at most millisecond display precision, a space between
+date and time, and the numeric locale's fraction separator. GUI time ticks stay
+on a grid no finer than one millisecond, so submillisecond zoom does not repeat
+rounded labels. Selection steps follow the displayed digit, while unchanged
+Enter/blur preserves exact sample coordinates. Canonical RFC3339 metadata storage
+and exact sample-mode counts are unchanged. Selection durations remain relative. Timestamp entry subtracts integer
 origins before converting relative seconds to sample indices. Where seconds cannot
 address adjacent samples safely, existing exact sample-number fallback remains.

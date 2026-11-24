@@ -280,6 +280,26 @@ separately from the completed previous review cycle.
   gate and current release, and inspect the affected ruler in isolated Xvfb.
 - [x] Submit the exact narrow snapshot and evidence for coordinator assessment.
 
+## Follow-up: millisecond human time presentation
+
+Owner-approved scope: all human time readouts and editable selection fields use
+at most three fractional digits, the numeric locale's decimal separator and a
+space between UTC date and time. Samples retain exact integer counts. Canonical
+RecordingTime parsing/formatting and WAVE/FLAC metadata remain unchanged.
+This follow-up is class A because it spans shared GUI presentation consumers and
+more than five code/test files. Existing coordinator, executor and independent
+reviewer assignments above apply. No new widget or toolkit change is required.
+
+- [x] Cap GUI ruler marks, cursor/status readouts and selection fields at milliseconds.
+- [x] Localize UTC formatting and inverse entry, retain safe large-coordinate sample fallback.
+- [x] Verify millisecond stepping, rollover, unchanged high-rate drafts and frequency precision.
+- [x] Complete the current gate/release and independent review evidence: formatting,
+  all-target Clippy and 980 tests plus doctests pass. Round 1 accepted one UTC stepping
+  correction, and round 2 is clean with no declined findings.
+- [ ] Production Xvfb execution is incomplete: automatic approval review timed out
+  before process creation for both the initial launch and its permitted retry.
+  Owner manual acceptance remains pending.
+
 ## Post-completion
 
 After accepted merge, verify accepted branch-head identity, unique/unpushed/untracked

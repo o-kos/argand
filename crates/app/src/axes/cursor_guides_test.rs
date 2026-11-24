@@ -5,8 +5,8 @@ fn shared_readout_honours_all_ruler_modes_and_frequency_units() {
     use crate::navigation::time_ruler::Mode;
 
     for (mode, time) in [
-        (Mode::Clock, "0:12.0005000"),
-        (Mode::Seconds, "12.0005000 s"),
+        (Mode::Clock, "0:12.000"),
+        (Mode::Seconds, "12.000 s"),
         (Mode::Samples, "#24,001,000"),
     ] {
         for (hertz, frequency) in [
@@ -53,7 +53,7 @@ fn physical_values_follow_requested_extents_and_inverted_frequency_axis() {
         hertz: (99e6, 101e6),
     };
     let center = Readout::at(plot, point(px(510.), px(270.)), extents, 1.).unwrap();
-    assert_eq!(center.time, "0:12.0005000");
+    assert_eq!(center.time, "0:12.000");
     assert_eq!(center.frequency, "100.000 MHz");
     let top = Readout::at(plot, point(px(10.), px(20.)), extents, 1.).unwrap();
     assert_eq!(top.frequency, "101.000 MHz");
@@ -62,7 +62,7 @@ fn physical_values_follow_requested_extents_and_inverted_frequency_axis() {
 }
 
 #[test]
-fn hidpi_badges_resolve_adjacent_device_pixels() {
+fn hidpi_time_badges_round_to_milliseconds_while_frequency_keeps_pixel_precision() {
     let plot = Rect {
         x: 0.,
         y: 0.,
@@ -78,8 +78,8 @@ fn hidpi_badges_resolve_adjacent_device_pixels() {
     };
     let first = Readout::at(plot, point(px(0.5), px(0.5)), extents, 2.).unwrap();
     let next = Readout::at(plot, point(px(1.), px(1.)), extents, 2.).unwrap();
-    assert_eq!(first.time, "0:00.0005");
-    assert_eq!(next.time, "0:00.0010");
+    assert_eq!(first.time, "0:00.001");
+    assert_eq!(next.time, "0:00.001");
     assert_eq!(first.frequency, "0.4995 Hz");
     assert_eq!(next.frequency, "0.4990 Hz");
 }

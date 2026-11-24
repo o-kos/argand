@@ -108,3 +108,37 @@ readout still includes its UTC timestamp suffix as intended. See the
 This bounded production check used horizontal orientation; the existing regression
 checks both orientations through their shared tick formatter. App and verified
 Xvfb were stopped. Owner manual/native-platform acceptance limits remain unchanged.
+
+
+## Follow-up: millisecond human presentation
+
+The owner requested at most millisecond precision for human time displays, numeric
+locale fractions and a space between UTC date and time. GUI time ticks use a
+minimum 1ms step, retaining real coordinates and bounds. Sample-mode counts remain
+exact. Canonical RecordingTime and WAVE/FLAC RFC3339 metadata are unchanged.
+
+Automated coverage includes relative/UTC cursor and selection presentation,
+midnight rounding, dot/comma inverse entry and stepping, both ruler orientations,
+large-coordinate sample fallback, retained frequency precision and actual panel
+Enter/blur with unchanged rounded drafts at 1MHz. Independent review identified
+one accepted correction: canonical dot UTC drafts in comma locales must step by
+their fractional digit, just as localized drafts do. A regression follows the
+changed-draft parse then step sequence for ru-RU and de-DE with both spellings.
+
+Formatting, all-target Clippy and all 980 tests plus doctests pass, including
+593 application tests. Review by `gpt-6.1-sol` high accepted the UTC draft stepping
+correction in round 1, then returned no substantive findings in round 2. There
+were no declined findings. Final logs are `target/issue265-ms-{fmt,clippy,tests}-final.log`.
+
+Current production UI execution is incomplete. A fresh task-owned Xvfb was
+verified ready with isolated supported XDG config/state/cache/data and TMPDIR,
+and ru-RU configuration. Both the first production launch request and its single
+permitted retry were rejected before process creation because automatic permission
+approval review did not finish before its deadline. No current production
+application was launched, screenshot taken or interaction exercised. Previous
+captures in this report are historical and do not validate this follow-up.
+The task-owned Xvfb cleanup result is recorded with the local run artifacts.
+
+Owner manual acceptance and native Wayland/Windows/macOS verification remain
+pending. The PR remains Draft. Current automated/build identities and exact
+review disposition are recorded in the follow-up handoff packet.

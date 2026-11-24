@@ -302,7 +302,7 @@ impl PlotView {
     }
 }
 
-/// The value `field` holds in the selection, precise enough to read back unchanged.
+/// The displayed value of `field`. The unchanged-draft guard preserves exact coordinates.
 fn entry_text(snapshot: &PlotSnapshot, field: Field) -> Option<String> {
     let scale = snapshot.entry?;
     let selected = snapshot.selected;

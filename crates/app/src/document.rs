@@ -483,7 +483,10 @@ impl Document {
             })
             .collect::<Vec<_>>();
         if let Some(start) = meta.recording_start {
-            rows.push(("Recording start UTC".into(), start.format(3)));
+            rows.push((
+                "Recording start UTC".into(),
+                crate::numbers::current().utc(start, 3),
+            ));
         }
         rows.push((
             "Total samples".into(),

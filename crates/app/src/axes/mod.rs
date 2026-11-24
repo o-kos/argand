@@ -292,7 +292,7 @@ impl Frame {
         let across = LabelMetrics::new(measure, LABEL_SIZE, LabelRun::Across)
             .keep_edge_marks()
             .after_tick(BOTTOM_LABEL_START);
-        let mut bottom_ticks = axis::tick_layout(
+        let mut bottom_ticks = time_tick_layout(
             bottom_kind,
             Axis {
                 length: plot.width as i64,
@@ -348,6 +348,32 @@ impl Frame {
     }
 }
 
+/// Keep human time ticks on the millisecond grid even when samples zoom closer.
+fn time_tick_layout(
+    kind: AxisKind,
+    axis: Axis,
+    labels: &LabelMetrics<'_>,
+    held: Option<axis::TickScheme>,
+) -> axis::TickLayout {
+    let layout = axis::tick_layout(kind, axis, labels, held);
+    let time = matches!(
+        kind,
+        AxisKind::PreciseTime | AxisKind::Seconds | AxisKind::UtcTime(_)
+    );
+    match layout.scheme {
+        Some(scheme) if time && scheme.step < 0.001 => axis::tick_layout(
+            kind,
+            axis,
+            labels,
+            Some(axis::TickScheme {
+                step: 0.001,
+                ..scheme
+            }),
+        ),
+        _ => layout,
+    }
+}
+
 fn right_axis(
     extents: Extents,
     held: Held,
@@ -383,7 +409,7 @@ fn right_axis(
         row_height,
         measure,
     );
-    let mut layout = axis::tick_layout(
+    let mut layout = time_tick_layout(
         kind,
         Axis {
             length: height as i64,

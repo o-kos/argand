@@ -18,10 +18,10 @@ fn modes_preserve_capture_origin_and_use_sample_units_once() {
     assert_eq!(Mode::Samples.sample_step(100., 2e6), 100.);
     ruler.mode = Mode::Seconds;
     assert_eq!(ruler.bounds(seconds), seconds);
-    assert_eq!(ruler.readout(2.0005, 0.001, 1000., 0.5), "2.000500 s");
+    assert_eq!(ruler.readout(2.0005, 0.001, 1000., 0.5), "2.001 s");
     assert_eq!(Mode::Seconds.sample_step(0.001, 2e6), 2000.);
     ruler.mode = Mode::Clock;
-    assert_eq!(ruler.readout(2.0005, 0.001, 1000., 0.5), "0:02.000500");
+    assert_eq!(ruler.readout(2.0005, 0.001, 1000., 0.5), "0:02.001");
     assert_eq!(ruler.view, view);
 }
 
@@ -59,7 +59,7 @@ fn texts(counters: [String; 3]) -> [String; 3] {
 }
 
 #[test]
-fn a_selection_reads_sample_exact_in_every_mode() {
+fn selection_time_is_rounded_to_milliseconds_and_samples_stay_exact() {
     let span = span(4_000_000, 4_001_000);
     assert_eq!(
         texts(Mode::Samples.counters(span, 2e6, 4_100_000, 1e-9)),
@@ -67,11 +67,11 @@ fn a_selection_reads_sample_exact_in_every_mode() {
     );
     assert_eq!(
         texts(Mode::Seconds.counters(span, 2e6, 4_100_000, 1e-9)),
-        ["2.0000000 s", "2.0005000 s", "0.0005000 s"]
+        ["2.000 s", "2.001 s", "0.001 s"]
     );
     assert_eq!(
         texts(Mode::Clock.counters(span, 2e6, 4_100_000, 1e-9)),
-        ["0:02.0000000", "0:02.0005000", "0:00.0005000"]
+        ["0:02.000", "0:02.001", "0:00.001"]
     );
 }
 
@@ -85,22 +85,18 @@ fn decimals_follow_the_zoom_but_never_pass_one_sample() {
     );
     assert_eq!(
         texts(Mode::Seconds.counters(span, 2e6, 4_100_000, 2e-6)),
-        ["2.000000 s", "2.000500 s", "0.000500 s"]
+        ["2.000 s", "2.001 s", "0.001 s"]
     );
 }
 
 #[test]
 fn a_selection_seconds_cannot_tell_apart_is_given_in_samples() {
     let fast = Mode::Seconds.counters(span(100, 101), 4e9, 200, 1e-12);
-    assert_eq!(
-        texts(fast)[0],
-        "0.0000000250 s",
-        "past nanoseconds where a pixel and a sample are finer"
-    );
+    assert_eq!(texts(fast), ["0.000 s", "0.000 s", "0.000 s"]);
     assert_eq!(
         texts(Mode::Clock.counters(span(100, 101), 4e9, 200, 1e-12)),
-        ["#100", "#100", "1"],
-        "the clock stops at nanoseconds"
+        ["0:00.000", "0:00.000", "0:00.000"],
+        "high rates still use time presentation"
     );
     assert_eq!(
         texts(Mode::Clock.counters(span(u64::MAX - 1, u64::MAX), 24e6, u64::MAX, 1e-9)),
