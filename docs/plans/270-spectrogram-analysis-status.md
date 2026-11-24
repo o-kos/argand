@@ -29,17 +29,17 @@ Shell/Document continue to derive status and own dismissal. Add the existing pre
 - [x] Preserve stock timing Tooltip and tooltips eligibility.
 - [x] Remove old status-bar analysis fragment without changing metadata or controls.
 - [x] Verify rendered overlay input pass-through and progress/completion/dismissal regressions.
-- [ ] Verify orientations, themes, narrow windows and coexistence with selection/cursor readouts, saved notice and corner controls.
+- [x] Verify orientations/themes and supported minimum with actual production selection and corner controls. Automated rendered regression separately covers simultaneous saved/analysis notices and direct input pass-through.
 - [x] Update changelog and UI architecture with the new presentation location.
 
 ## Acceptance criteria and evidence
 
 | Criterion | Verification | Result | Limits |
 | --- | --- | --- | --- |
-| One analysis status at spectrum bottom-right | Rendered production UI in both orientations and themes | Pending | Xvfb establishes X11 only |
-| Progress, completion, hint and dismissal unchanged | Existing lifecycle tests plus production initial/re-analysis and input scenarios | Pending | No scheduling changes |
-| Navigation/selection pass through notice | Rendered actual plot pointer/wheel/drag regression and Xvfb interaction | Pending | No occlusion or handlers |
-| Readable and clear of essential UI | Narrow/normal windows, light/dark, existing ruler controls and badges | Pending | Owner acceptance remains distinct |
+| One analysis status at spectrum bottom-right | Rendered production UI in both orientations and themes | Passed in production light/dark and both orientations, including actual 640×400 windows | Xvfb establishes X11 only |
+| Progress, completion, hint and dismissal unchanged | Existing lifecycle tests plus production initial/re-analysis and input scenarios | Production progress, completion and settled Ready dismissal observed, automated presentation tests passed | Timing Tooltip, pre-header Opening and failure appearance not exercised natively; no scheduling changes |
+| Navigation/selection pass through notice | Rendered actual plot pointer/wheel/drag regression and Xvfb interaction | Rendered production-composition pointer/wheel/drag regression passed; actual plot zoom and selection exercised | Native direct input through still-visible progress was not separately isolated; no occlusion or handlers |
+| Readable and clear of essential UI | Narrow/normal windows, light/dark, existing ruler controls and badges | Production actual minimum with selection readouts passed in dark/light vertical layouts; normal horizontal layouts observed | Simultaneous save/analysis native appearance unperformed; owner acceptance remains distinct |
 
 ## Layout limits
 
@@ -54,8 +54,8 @@ A notification system or new custom widget would change dismissal/focus behavior
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after preceding checks pass
-- [ ] Production Xvfb acceptance with disposable inputs and isolated settings/session/cache.
+- [x] `cargo build --release --locked`, after preceding checks pass
+- [ ] Production Xvfb acceptance: partial evidence below. Retain active plan until remaining acceptance is resolved.
 - [ ] Independent read-only review of exact submitted revision.
 - [ ] Publish Draft PR with accurate evidence and remaining acceptance limits.
 - [ ] Move this plan to completed only after every in-scope acceptance item passes.
@@ -63,3 +63,7 @@ A notification system or new custom widget would change dismissal/focus behavior
 ## Post-completion
 
 Merge and release require the corresponding owner authority and are outside this task. Preserve worktree data until the PR is accepted, then follow safe cleanup policy.
+
+## Current validation and acceptance boundary
+
+The full local gate passed: formatting, all-target Clippy, 974 tests with zero failures/ignores, then a successful release build. The exact production release was exercised on a task-owned Xvfb X11 display with disposable data and isolated supported XDG config/state/cache roots. Raw commands, binary identity, logs, screenshots and explicit unperformed checks are retained in the independent review handoff. Native Wayland, other OS behavior and owner acceptance remain unestablished. Keep this plan active and the Pull Request Draft while acceptance remains incomplete.

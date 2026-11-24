@@ -34,9 +34,9 @@ Refresh File size after successful save/rebind while the File information panel 
 
 | Criterion | Verification | Result | Limits |
 | --- | --- | --- | --- |
-| Retained File size follows successful metadata save/rebind | Production save/rebind regression and Xvfb ordinary Save of disposable WAVE | Pending | No data-safety behavior changes |
-| Panel and draft controls survive refresh | Retained entity identity and draft-value assertions, focus/edit/Enter/Escape and Select scenario | Pending | Native Wayland/macOS/Windows not established by Xvfb |
-| Source-only File size is hidden until an unsaved capture is rebound | Shared summary synchronization regression | Pending | No new filesystem reads |
+| Retained File size follows successful metadata save/rebind | Production save/rebind regression and Xvfb ordinary Save of disposable WAVE | Passed: production ordinary Save changed 48000044 B to 48000216 B and retained readout matched | No data-safety behavior changes |
+| Panel and draft controls survive refresh | Retained entity identity and draft-value assertions, focus/edit/Enter/Escape and Select scenario | Passed: retained Input/Select identities and unfinished draft in automated Save regression, live 49 kHz draft preserved across ordinary Save | Native Select interaction and Wayland/macOS/Windows not exercised in this run |
+| Source-only File size is hidden until an unsaved capture is rebound | Shared summary synchronization regression | Source guard retained. Save As closes the panel before native chooser, so no retained panel crosses first publication | No new filesystem reads |
 
 ## Rejected alternatives
 
@@ -47,8 +47,8 @@ Reopening the panel would discard retained drafts. Reading filesystem metadata d
 - [x] `cargo fmt --all -- --check`
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
-- [ ] `cargo build --release --locked`, after preceding checks pass
-- [ ] Production Xvfb acceptance with disposable inputs and isolated settings/session/cache.
+- [x] `cargo build --release --locked`, after preceding checks pass
+- [ ] Production Xvfb acceptance: partial evidence below. Retain active plan until remaining acceptance is resolved.
 - [ ] Independent read-only review of exact submitted revision.
 - [ ] Publish Draft PR with accurate evidence and remaining acceptance limits.
 - [ ] Move this plan to completed only after every in-scope acceptance item passes.
@@ -56,3 +56,7 @@ Reopening the panel would discard retained drafts. Reading filesystem metadata d
 ## Post-completion
 
 Merge and release require the corresponding owner authority and are outside this task. Preserve worktree data until the PR is accepted, then follow safe cleanup policy.
+
+## Current validation and acceptance boundary
+
+The full local gate passed: formatting, all-target Clippy, 974 tests with zero failures/ignores, then a successful release build. The exact production release was exercised on a task-owned Xvfb X11 display with disposable data and isolated supported XDG config/state/cache roots. Raw commands, binary identity, logs, screenshots and explicit unperformed checks are retained in the independent review handoff. Native Wayland, other OS behavior and owner acceptance remain unestablished. Keep this plan active and the Pull Request Draft while acceptance remains incomplete.
