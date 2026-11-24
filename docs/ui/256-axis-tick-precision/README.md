@@ -3,7 +3,7 @@
 This file is historical and covers only the initial scope. See the
 [current expanded-scope evidence](expanded.md) for the shared-unit implementation.
 
-Overall UI acceptance remains **incomplete**. These are direct production rendering
+At this historical checkpoint executor-run UI acceptance was **incomplete**. These are direct production rendering
 observations, not an exercised zoom/pan or orientation-switching scenario.
 
 ## Build and environment
@@ -65,7 +65,8 @@ Native computer input APIs were disabled in this session, and no installed
 `xdotool`, `xte`, `ydotool` or `wmctrl` input route was available. No packages were
 installed and no input was injected through an alternate mechanism. Automated
 held-scheme tests and these screenshots do not establish interactive acceptance.
-The PR stays Draft and its plan stays active until this scenario can be exercised.
+At this historical checkpoint the PR stayed Draft. The owner later accepted
+PR #268 with the reported limits, as recorded in the expanded evidence.
 
 Only verified task-owned application processes and the task-owned Xvfb server
 were stopped. The owner's running applications and physical displays were not

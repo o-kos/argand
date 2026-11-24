@@ -1,6 +1,8 @@
 # Issue #256: shared frequency presentation evidence
 
-UI acceptance remains **incomplete**. These are direct production rendering
+The owner explicitly accepted PR #268 on 2026-11-24 with the previously reported
+validation limits. Executor-run interaction evidence remains **incomplete**.
+These are direct production rendering
 observations from five separate launches, not interactive zoom/pan, live orientation
 switching, cursor/Alt interaction or editing acceptance.
 
@@ -64,8 +66,9 @@ Interactive production zoom/pan, live orientation switching, cursor/Alt and freq
 editing scenarios remain **unperformed**. Native computer input APIs are disabled,
 and no installed permitted `xdotool`, `xte`, `ydotool` or `wmctrl` input route is
 available. No packages or alternate input mechanism were introduced. Automated
-interaction tests and static captures do not establish owner acceptance. The PR
-remains Draft and the plan remains active.
+interaction tests and static captures do not establish owner acceptance. The owner accepted these reported limits as the final task decision. This does
+not establish that the unavailable interaction scenarios were executed. The
+[accepted plan](../../plans/completed/256-axis-tick-precision.md) is complete.
 
 All task-owned application processes and Xvfb were stopped after capture. DRI3
 acceleration warnings did not prevent rendering. Hardware acceleration, Wayland,

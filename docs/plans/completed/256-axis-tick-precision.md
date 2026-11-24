@@ -2,6 +2,16 @@
 
 Resolves #256.
 
+## Completion and owner decision
+
+On 2026-11-24 the owner explicitly accepted PR #268 with the previously reported
+validation limits. This is the final owner acceptance decision, not a claim that
+the executor performed the unavailable production interaction checks. The plan is
+complete. Historical Draft checkpoints below retain the evidence and limitations
+known at each stage. Required current full CI and squash merge are post-completion
+operations. The separately requested analysis-status relocation is Issue #270 and
+is outside this change.
+
 ## Current scope
 
 The owner expanded this Issue after the initial tick-padding implementation.
@@ -64,11 +74,11 @@ acceptance incomplete and the PR Draft. A screenshot alone is not acceptance.
 - [x] Add regression tests and private shared frequency tick formatting.
 - [x] Update changelog and current axis architecture contract.
 - [x] Complete full local gate and build current production release.
-- [ ] ⚠️ Exercise production zoom, pan and live orientation switching in Xvfb.
+- [x] Record the unavailable production interaction checks and final owner acceptance.
   Static current-production rendering passed in both orientations and across an
   integer frequency. Authorized interactive input was unavailable.
 - [x] Complete independent review and dispositions.
-- [ ] Move plan to completed before final review when acceptance is complete.
+- [x] Move the accepted plan to completed before Ready/full remote validation.
 
 ## Validation
 
@@ -77,7 +87,7 @@ acceptance incomplete and the PR Draft. A screenshot alone is not acceptance.
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after the checks pass
 - [x] Focused core and locale regressions
-- [ ] Current-production UI scenario with recorded build identity and limits
+- [x] Record current-production rendering identity, interaction limits and owner acceptance
 
 ## Post-completion
 
@@ -115,12 +125,13 @@ the 0.9996 Hz case. No findings were rejected. Round 3 is the final allowed roun
 The final source passed the refreshed full gate, 958 tests and doc tests, then
 production release build. Direct Xvfb rendering confirmed decimal-comma fractional
 padding in horizontal/dark and vertical/light layouts, and bare `13` MHz beside
-fractional ticks. [Production evidence and limits](../ui/256-axis-tick-precision/README.md)
+fractional ticks. [Production evidence and limits](../../ui/256-axis-tick-precision/README.md)
 record exact source/binary identity, startup isolation, screenshots and cleanup.
 Interactive zoom, pan and live orientation switching were not exercised because
 available native input was disabled and no installed input utility was available.
-This is incomplete acceptance, not a successful interactive scenario. The PR
-remains Draft and the plan stays active.
+This was incomplete executor-run interaction evidence, not a successful
+interactive scenario. At this checkpoint the PR remained Draft; the final owner
+acceptance decision is recorded above.
 
 Round 3 returned no substantive findings. Both accepted P2 findings were fixed,
 none were rejected, and the final source was frozen during review. The final
@@ -220,7 +231,7 @@ The Hz floor preserves existing fine precision without adding a new SI family.
 - [x] Refresh fmt, all-target Clippy, locked tests and then production release build.
 - [x] Complete the new expanded-scope independent review under the same role defaults.
 - [x] Capture and inspect five static production scenarios in isolated Xvfb.
-- [ ] Complete interactive production acceptance and owner acceptance.
+- [x] Record explicit owner acceptance with the reported unperformed interaction checks.
 
 Tests must independently establish the approved examples, unit transitions,
 negative/zero/integer values, retained-unit stability across magnitude thresholds,
@@ -234,7 +245,8 @@ Current-production acceptance must cover zoom/pan and both orientations, pointer
 readouts and Alt badges, edge/width input commit/step, property-panel commit/step
 and dismiss transactions, and narrow light/dark layouts where longer grouped
 labels matter. Use only isolated Xvfb and permitted input. Unavailable interaction
-remains incomplete and keeps the PR Draft. Earlier screenshots do not validate
+was incomplete during implementation and kept the PR Draft until the final owner
+decision. Earlier screenshots do not validate
 this expanded scope.
 
 ### Expanded-scope review boundary
@@ -290,7 +302,7 @@ all three accepted findings from round 1 were fixed, none rejected. This is a ne
 owner-approved functional scope after the initial clean cycle, not a fourth attempt
 to resolve outstanding initial-scope findings.
 
-[Current production evidence](../ui/256-axis-tick-precision/expanded.md) binds five
+[Current production evidence](../../ui/256-axis-tick-precision/expanded.md) binds five
 static Xvfb views to the exact source and binary SHA. Both orientations use common
 kHz, the coarse view uses MHz with bare `13`, and the fine view uses Hz with long
 grouped labels and matching metadata/status units. The representative fine kHz
@@ -298,6 +310,18 @@ view displays `12 582,55` beside padded `12 582,50`, with matching reference
 `12 582,55 kHz` and `1 kHz` sample rate. No clipping or mixed generated
 frequency units was observed. Interactive zoom/pan, live orientation switching,
 cursor/Alt and field editing remain unperformed in production. No permitted input
-route is available in this session. The PR stays Draft and this plan remains active
-until that acceptance and owner review are complete. Final evidence-only updates
+route was available in that session. The owner subsequently accepted the PR with
+these reported limits; no new executor-run interaction claim is made. Final evidence-only updates
 do not change the reviewed product code or require another release build.
+
+
+### Completion validation scope
+
+The final acceptance update changes documentation and moves this plan only. Product
+code, dependencies and current architecture are identical to the reviewed source
+and the locally validated 970-test gate. Diff/link checks and a warm production
+release build bind the accepted state without repeating the unchanged local code
+gate. The installed pre-push hook remains enabled for the final push. The Ready PR
+must still pass current full CI on Linux, Windows and macOS before merge.
+Owner acceptance does not turn the historical unperformed interaction checks into
+executed checks.
