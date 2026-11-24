@@ -66,8 +66,8 @@ shared external-tooltip registration teardown through an intervening frame. Inst
 - [x] Correct obsolete tooltip ownership using supported mechanisms.
 - [x] Update architecture and changelog.
 - [x] Complete local gate and production Xvfb acceptance, recording evidence and limits.
-- [ ] Prepare exact independent review handoff and address findings.
-- [ ] Move this plan to `docs/plans/completed/` before final review after acceptance is complete.
+- [x] Prepare exact independent review handoff and address findings.
+- [x] Move this plan to `docs/plans/completed/` after implementation, validation and independent review.
 
 ## Validation
 
@@ -88,7 +88,7 @@ real X11 pointer/wheel/keyboard events, disposable WAVE captures, and isolated
 supported XDG configuration/state/cache directories. Source/binary identity,
 raw logs, scenario script and screenshots are retained in the independent review
 packet outside the worktree. The main checkout and owner's application were not
-modified. Independent review is pending; the Pull Request remains Draft.
+modified. Independent review by `gpt-6.1-sol` high in a fresh read-only context returned no substantive findings in its first round. No findings were accepted or rejected. The coordinator assessed the exact reviewed diff, validation evidence and production visuals. The Pull Request remains Draft for owner feedback; owner manual acceptance and native Wayland/Windows/macOS checks remain separate.
 
 ## Post-completion
 
