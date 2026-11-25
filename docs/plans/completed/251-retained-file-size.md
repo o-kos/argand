@@ -2,7 +2,7 @@
 
 Resolves #251.
 
-[Draft Pull Request #272](https://github.com/o-kos/argand/pull/272).
+[Pull Request #272](https://github.com/o-kos/argand/pull/272).
 
 ## Overview
 
@@ -50,15 +50,21 @@ Reopening the panel would discard retained drafts. Reading filesystem metadata d
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after preceding checks pass
-- [ ] Production Xvfb acceptance: partial evidence below. Retain active plan until remaining acceptance is resolved.
+- [x] Exercise the affected production scenarios on isolated Xvfb and record the limits below. The owner accepted the submitted result, including the final three-second behavior, on 2026-11-25. Unperformed probes remain explicit limits.
 - [x] Independent read-only review of submitted product source. Evidence-coverage wording was corrected and the final source review returned no substantive findings.
 - [x] Publish Draft PR with accurate evidence and remaining acceptance limits.
-- [ ] Move this plan to completed only after every in-scope acceptance item passes.
+- [x] Record owner acceptance and move this plan to completed.
 
 ## Post-completion
 
-Merge and release require the corresponding owner authority and are outside this task. Preserve worktree data until the PR is accepted, then follow safe cleanup policy.
+The owner authorized finishing and merging this accepted PR. Request full Ready CI, squash-merge only after current `ci/full` passes and conversations are resolved, then preserve evidence and remove the accepted worktree and branch safely. Release remains outside this task.
 
-## Current validation and acceptance boundary
+## Initial validation and acceptance boundary
 
-The full local gate passed: formatting, all-target Clippy, 974 tests with zero failures/ignores, then a successful release build. The exact production release was exercised on a task-owned Xvfb X11 display with disposable data and isolated supported XDG config/state/cache roots. Raw commands, binary identity, logs, screenshots and explicit unperformed checks are retained in the independent review handoff. Native Wayland, other OS behavior and owner acceptance remain unestablished. Keep this plan active and the Pull Request Draft while acceptance remains incomplete.
+The full local gate passed: formatting, all-target Clippy, 974 tests with zero failures/ignores, then a successful release build. The exact production release was exercised on a task-owned Xvfb X11 display with disposable data and isolated supported XDG config/state/cache roots. Raw commands, binary identity, logs, screenshots and explicit unperformed checks are retained in the independent review handoff. Native Wayland and other OS behavior were not established by this local run. Owner acceptance was subsequently recorded below. This historical evidence does not claim unperformed checks passed.
+
+## Final acceptance and completion
+
+On 2026-11-25 the owner accepted Pull Request #272, including the final muted analysis notice and three-second completion lifetime, and authorized the finishing/merge workflow. The latest source gate passed formatting, all-target Clippy, 978 tests with zero failures/ignores, then release. Independent review of the submitted three-second revision returned no substantive findings. The coordinator assessed the exact source, timer guards, evidence and limits.
+
+The recorded unperformed native probes remain unperformed: acceptance does not turn them into test passes. The owner accepted the in-scope result with those limits documented. This completion change moves plans and records acceptance only, leaving the validated product source unchanged. Full required remote CI must pass on the final PR revision before merge. Post-merge cleanup follows the conditional branch/worktree checks above.

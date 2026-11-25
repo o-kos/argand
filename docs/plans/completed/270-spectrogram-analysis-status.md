@@ -2,7 +2,7 @@
 
 Resolves #270.
 
-[Draft Pull Request #272](https://github.com/o-kos/argand/pull/272).
+[Pull Request #272](https://github.com/o-kos/argand/pull/272).
 
 ## Overview
 
@@ -57,18 +57,18 @@ A notification system or new custom widget would change dismissal/focus behavior
 - [x] `cargo clippy --all-targets --locked`
 - [x] `cargo test --locked`
 - [x] `cargo build --release --locked`, after preceding checks pass
-- [ ] Production Xvfb acceptance: partial evidence below. Retain active plan until remaining acceptance is resolved.
-- [ ] Independent read-only review of owner-feedback revision. The preceding source review was clean after its evidence-coverage correction.
+- [x] Exercise the affected production scenarios on isolated Xvfb and record the limits below. The owner accepted the submitted result, including the final three-second behavior, on 2026-11-25. Unperformed probes remain explicit limits.
+- [x] Independent read-only review of owner-feedback revisions. The muted/timed feedback and subsequent three-second adjustment each completed with no substantive findings. The earlier evidence-coverage wording correction was resolved.
 - [x] Publish Draft PR with accurate evidence and remaining acceptance limits.
-- [ ] Move this plan to completed only after every in-scope acceptance item passes.
+- [x] Record owner acceptance and move this plan to completed.
 
 ## Post-completion
 
-Merge and release require the corresponding owner authority and are outside this task. Preserve worktree data until the PR is accepted, then follow safe cleanup policy.
+The owner authorized finishing and merging this accepted PR. Request full Ready CI, squash-merge only after current `ci/full` passes and conversations are resolved, then preserve evidence and remove the accepted worktree and branch safely. Release remains outside this task.
 
-## Current validation and acceptance boundary
+## Initial validation and acceptance boundary
 
-The full local gate passed: formatting, all-target Clippy, 974 tests with zero failures/ignores, then a successful release build. The exact production release was exercised on a task-owned Xvfb X11 display with disposable data and isolated supported XDG config/state/cache roots. Raw commands, binary identity, logs, screenshots and explicit unperformed checks are retained in the independent review handoff. Native Wayland, other OS behavior and owner acceptance remain unestablished. Keep this plan active and the Pull Request Draft while acceptance remains incomplete.
+The full local gate passed: formatting, all-target Clippy, 974 tests with zero failures/ignores, then a successful release build. The exact production release was exercised on a task-owned Xvfb X11 display with disposable data and isolated supported XDG config/state/cache roots. Raw commands, binary identity, logs, screenshots and explicit unperformed checks are retained in the independent review handoff. Native Wayland and other OS behavior were not established by this local run. Owner acceptance was subsequently recorded below. This historical evidence does not claim unperformed checks passed.
 
 ## Owner feedback: muted status text and bounded completion lifetime
 
@@ -85,11 +85,11 @@ The owner requested gray text matching the status bar and automatic disappearanc
 - [x] Verify genuine toolkit-clock expiry, non-expiring progress, input cancellation, newer completion/document safety and Saved notice independence. Rejected delivery does not postpone the current deadline.
 - [x] Reproduce shortcut zoom with a stationary pointer in the current production Xvfb binary, observe completion then disappearance after five seconds without more input.
 - [x] Verify readable muted text in both themes and orientations, retaining existing placement and pass-through behavior.
-- [ ] Refresh full local gate, production binary identity, independent review and Draft PR description for this feedback revision.
+- [x] Refresh full local gate, production binary identity, independent review and Draft PR description for this feedback revision.
 
-Earlier gate and production observations above describe the preceding submitted behavior. They do not establish these new feedback criteria. Keep the plan active and PR Draft until current evidence and remaining acceptance are resolved.
+Earlier gate and production observations above describe the preceding submitted behavior. The feedback-specific evidence follows below and the final acceptance is recorded at the end.
 
-Previous five-second feedback validation passed formatting, all-target Clippy,978tests with zero failures/ignores, then release build. The exact release showed muted Ready text in both themes/orientations on isolated native X11. With the pointer parked outside the spectrum, a frequency-zoom shortcut produced visible Ready at roughly0.7–0.8seconds and it disappeared by6.3–6.4seconds without intervening input. Toolkit-clock tests separately verify the exact five-second boundary, non-expiring progress and stale/input/document safety. This pass did not repeat native minimum-size/save scenarios or the original unperformed checks above. Remaining owner and other-platform acceptance still keeps this plan active and PR Draft.
+Previous five-second feedback validation passed formatting, all-target Clippy,978tests with zero failures/ignores, then release build. The exact release showed muted Ready text in both themes/orientations on isolated native X11. With the pointer parked outside the spectrum, a frequency-zoom shortcut produced visible Ready at roughly0.7–0.8seconds and it disappeared by6.3–6.4seconds without intervening input. Toolkit-clock tests separately verify the exact five-second boundary, non-expiring progress and stale/input/document safety. This pass did not repeat native minimum-size/save scenarios or the original unperformed checks above. Other-platform evidence was not established in that local run. The owner subsequently accepted the submitted result below.
 
 ## Owner feedback: three-second completion lifetime
 
@@ -98,6 +98,12 @@ The owner now explicitly requests three seconds instead of five. This supersedes
 - [x] Change the Ready timeout to three seconds and update fake-clock boundary/restart/rejection tests.
 - [x] Update current architecture/changelog wording while preserving earlier five-second evidence as historical.
 - [x] Run the mandatory full local gate, then observe the affected stationary-pointer shortcut scenario in the exact rebuilt production binary on task-owned Xvfb.
-- [ ] Obtain current-revision independent review and update the existing Draft PR without claiming remaining owner/platform acceptance.
+- [x] Obtain current-revision independent review and update the existing Draft PR, retaining the explicit validation limits.
 
 Three-second adjustment validation passed formatting, all-target Clippy,978tests with zero failures/ignores, then the release build. A scoped current-production dark/horizontal X11 probe showed Ready at0.779seconds after a keyboard frequency zoom and absent at4.252seconds without intervening pointer/key input, before the old five-second deadline. Toolkit-clock tests establish the exact three-second boundary. Previous appearance/theme/orientation evidence remains historical and other acceptance limits are unchanged.
+
+## Final acceptance and completion
+
+On 2026-11-25 the owner accepted Pull Request #272, including the final muted analysis notice and three-second completion lifetime, and authorized the finishing/merge workflow. The latest source gate passed formatting, all-target Clippy, 978 tests with zero failures/ignores, then release. Independent review of the submitted three-second revision returned no substantive findings. The coordinator assessed the exact source, timer guards, evidence and limits.
+
+The recorded unperformed native probes remain unperformed: acceptance does not turn them into test passes. The owner accepted the in-scope result with those limits documented. This completion change moves plans and records acceptance only, leaving the validated product source unchanged. Full required remote CI must pass on the final PR revision before merge. Post-merge cleanup follows the conditional branch/worktree checks above.
