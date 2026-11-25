@@ -97,5 +97,7 @@ The owner now explicitly requests three seconds instead of five. This supersedes
 
 - [x] Change the Ready timeout to three seconds and update fake-clock boundary/restart/rejection tests.
 - [x] Update current architecture/changelog wording while preserving earlier five-second evidence as historical.
-- [ ] Run the mandatory full local gate, then observe the affected stationary-pointer shortcut scenario in the exact rebuilt production binary on task-owned Xvfb.
+- [x] Run the mandatory full local gate, then observe the affected stationary-pointer shortcut scenario in the exact rebuilt production binary on task-owned Xvfb.
 - [ ] Obtain current-revision independent review and update the existing Draft PR without claiming remaining owner/platform acceptance.
+
+Three-second adjustment validation passed formatting, all-target Clippy,978tests with zero failures/ignores, then the release build. A scoped current-production dark/horizontal X11 probe showed Ready at0.779seconds after a keyboard frequency zoom and absent at4.252seconds without intervening pointer/key input, before the old five-second deadline. Toolkit-clock tests establish the exact three-second boundary. Previous appearance/theme/orientation evidence remains historical and other acceptance limits are unchanged.
