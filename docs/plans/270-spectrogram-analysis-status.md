@@ -90,3 +90,12 @@ The owner requested gray text matching the status bar and automatic disappearanc
 Earlier gate and production observations above describe the preceding submitted behavior. They do not establish these new feedback criteria. Keep the plan active and PR Draft until current evidence and remaining acceptance are resolved.
 
 Current feedback validation passed formatting, all-target Clippy,978tests with zero failures/ignores, then release build. The exact release showed muted Ready text in both themes/orientations on isolated native X11. With the pointer parked outside the spectrum, a frequency-zoom shortcut produced visible Ready at roughly0.7–0.8seconds and it disappeared by6.3–6.4seconds without intervening input. Toolkit-clock tests separately verify the exact five-second boundary, non-expiring progress and stale/input/document safety. This pass did not repeat native minimum-size/save scenarios or the original unperformed checks above. Remaining owner and other-platform acceptance still keeps this plan active and PR Draft.
+
+## Owner feedback: three-second completion lifetime
+
+The owner now explicitly requests three seconds instead of five. This supersedes the previous delay decision only. Keep the established Shell task, cancellation/identity guards, input dismissal, muted styling, progress and Saved behavior unchanged. Risk remains Class A for the combined branch and timer behavior, with the same coordinator/executor/reviewer assignments above.
+
+- [ ] Change the Ready timeout to three seconds and update fake-clock boundary/restart/rejection tests.
+- [ ] Update current architecture/changelog wording while preserving earlier five-second evidence as historical.
+- [ ] Run the mandatory full local gate, then observe the affected stationary-pointer shortcut scenario in the exact rebuilt production binary on task-owned Xvfb.
+- [ ] Obtain current-revision independent review and update the existing Draft PR without claiming remaining owner/platform acceptance.
