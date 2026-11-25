@@ -111,6 +111,7 @@ fn snapshot() -> PlotSnapshot {
         badges: None,
         entry: None,
         notice: None,
+        analysis_status: None,
         commands: command::Availability::for_plot_test(),
     }
 }
@@ -2503,6 +2504,100 @@ fn minimap_modifiers_keep_navigation_before_selection_grabs(cx: &mut TestAppCont
                     -1
                 }))]
             );
+        }
+    }
+}
+
+#[gpui_kit::test]
+fn analysis_feedback_stays_inside_the_spectrum_and_leaves_plot_input(cx: &mut TestAppContext) {
+    let _cleanup = crate::test_context::cleanup(cx);
+    use crate::navigation::orientation::Mode;
+    let handle = open(cx);
+    for mode in [ThemeMode::Light, ThemeMode::Dark] {
+        cx.update(|cx| gpui_kit::component::Theme::change(mode, None, cx));
+        for orientation in [Mode::Horizontal, Mode::Vertical] {
+            for (width, height) in [(900., 620.), (640., 400.)] {
+                handle
+                    .update(cx, |harness, _, cx| {
+                        harness.viewport = Some(size(px(width), px(height)));
+                        harness.plot.as_ref().unwrap().update(cx, |plot, cx| {
+                            let snapshot = plot.snapshot.as_mut().unwrap();
+                            snapshot.extents.orientation = orientation;
+                            snapshot.show_scale_ui = true;
+                            snapshot.analysis_status = Some(("Analyzing 99%".into(), None));
+                            snapshot.notice = Some("Saved capture.wav".into());
+                            snapshot.badges = Some(axes::SelectionBadges {
+                                time: Some(axes::AxisBadges {
+                                    texts: ["0.25 s".into(), "0.75 s".into(), "0.5 s".into()],
+                                    fields: crate::navigation::selection_entry::Field::TIME,
+                                    first: Some(0.),
+                                    second: Some(1.),
+                                    visible: (0., 1.),
+                                    around: (0., 1.),
+                                    alone: true,
+                                }),
+                                band: None,
+                            });
+                            plot.reorient(cx);
+                        });
+                        cx.notify();
+                    })
+                    .unwrap();
+                frame(cx, handle);
+                frame(cx, handle);
+                let bounds = cx
+                    .update_window(handle.into(), |_, window, _| {
+                        window.find("analysis-status").bounds()
+                    })
+                    .unwrap();
+                let plot = spectrum(cx, handle);
+                assert!(
+                    plot.contains(&bounds.origin) && plot.contains(&bounds.bottom_right()),
+                    "{mode:?} {orientation:?} {width}x{height}: {bounds:?} outside {plot:?}"
+                );
+                handle
+                    .update(cx, |harness, _, cx| {
+                        let view = harness.plot.as_ref().unwrap().read(cx);
+                        assert!(
+                            view.badges
+                                .iter()
+                                .all(|(_, badge)| !bounds.intersects(badge))
+                        );
+                        for zone in view.geometry.unwrap().zoom_zones.into_iter().flatten() {
+                            let zone = Bounds::new(
+                                point(px(zone.x), px(zone.y)),
+                                size(px(zone.width), px(zone.height)),
+                            );
+                            assert!(!bounds.intersects(&zone));
+                        }
+                    })
+                    .unwrap();
+                let at = bounds.center();
+                let mut input = gpui_kit::VisualTestContext::from_window(handle.into(), cx);
+                input.simulate_mouse_move(at, None, gpui_kit::Modifiers::default());
+                assert_eq!(pointer(cx, handle), Some(at));
+                navigation(cx, handle);
+                input.simulate_event(gpui_kit::ScrollEvent {
+                    position: at,
+                    delta: gpui_kit::ScrollDelta::Pixels(point(px(0.), px(40.))),
+                    ..Default::default()
+                });
+                assert!(
+                    !navigation(cx, handle).is_empty(),
+                    "feedback must leave wheel navigation"
+                );
+                left_drag(
+                    cx,
+                    handle,
+                    at,
+                    at - point(px(15.), px(15.)),
+                    gpui_kit::Modifiers::default(),
+                );
+                assert!(
+                    !selections(cx, handle).is_empty(),
+                    "feedback must leave selection input"
+                );
+            }
         }
     }
 }

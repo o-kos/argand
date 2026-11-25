@@ -488,12 +488,6 @@ impl Shell {
                     .map(|unsaved| unsaved.container.extension()),
             )
         });
-        let status = self.file.as_ref().and_then(|file| {
-            file.state
-                .document
-                .status()
-                .presentation(self.ready_status_dismissed)
-        });
         div()
             .on_any_mouse_down(cx.listener(|shell, _, _, cx| shell.close_hints(cx)))
             .flex()
@@ -551,30 +545,6 @@ impl Shell {
                     )
                 })
             })
-            .when_some(
-                status.filter(|_| !self.capture_changed()),
-                |bar, (status, hint)| {
-                    bar.child(
-                        div()
-                            .id("analysis-status")
-                            .min_w_0()
-                            .max_w(px(140.))
-                            .when_some(
-                                hint.filter(|_| self.external_tooltips_allowed(cx)),
-                                |status, hint| {
-                                    status.tooltip(move |_, cx| metadata_tooltip(hint.clone(), cx))
-                                },
-                            )
-                            .child(
-                                div()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .whitespace_nowrap()
-                                    .child(status),
-                            ),
-                    )
-                },
-            )
             .children(self.changed_item(cx))
             // Last, so it keeps its place whatever the readouts beside it do.
             .children(self.suppress_item(cx))

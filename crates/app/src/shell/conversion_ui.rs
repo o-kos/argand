@@ -454,13 +454,21 @@ impl Editor {
             })
         {
             self.details.retain(|(label, _)| {
-                label != "Peak" && label != "RMS" && label != "Reference frequency"
+                !matches!(
+                    label.as_str(),
+                    "Peak" | "RMS" | "Reference frequency" | "File size"
+                )
             });
             self.details.extend(
                 rows.into_iter()
-                    .filter(|(label, _)| !unsaved || label != "Reference frequency")
                     .filter(|(label, _)| {
-                        label == "Peak" || label == "RMS" || label == "Reference frequency"
+                        !unsaved || !matches!(label.as_str(), "Reference frequency" | "File size")
+                    })
+                    .filter(|(label, _)| {
+                        matches!(
+                            label.as_str(),
+                            "Peak" | "RMS" | "Reference frequency" | "File size"
+                        )
                     }),
             );
         }

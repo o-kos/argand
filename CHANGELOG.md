@@ -22,6 +22,8 @@ promise applies to.
 
 ### Changed
 
+- Show analysis progress and completion in the spectrogram’s bottom-right corner, using status-bar text color and automatically hiding completion after three seconds.
+
 - Unify spectrogram and ruler navigation and selection gestures, including Shift-drag or Ctrl-drag band selection, Ctrl+Shift-drag rectangles and Alt-click boundary adjustment.
 
 - Linux archives use system shared libraries instead of bundled runtime libraries
@@ -34,6 +36,8 @@ promise applies to.
   of absolute frequency labels (#185).
 
 ### Fixed
+
+- Refresh File information size after saving while preserving open conversion drafts.
 
 - Recent filenames use available start-page width before truncating, and scrolling cancels stale recent-file tooltips.
 
