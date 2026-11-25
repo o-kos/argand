@@ -93,7 +93,7 @@ fn ready_status_expires_without_input_and_preserves_saved_notice(cx: &mut TestAp
         shell.save_notice = Some(saving_ui::Notice::Saved("capture.iqw".into()));
         cx.notify();
     });
-    advance(cx, 4);
+    advance(cx, 2);
     assert!(visible(cx));
     advance(cx, 1);
     assert!(!visible(cx));
@@ -109,14 +109,18 @@ fn a_new_ready_or_document_does_not_inherit_an_older_timeout(cx: &mut TestAppCon
     let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     ready(&shell, cx);
-    advance(cx, 4);
+    advance(cx, 2);
     ready(&shell, cx);
     advance(cx, 1);
     assert!(
         visible(cx),
         "old completion deadline cannot hide newer completion"
     );
-    advance(cx, 3);
+    advance(cx, 1);
+    assert!(
+        visible(cx),
+        "new completion retains its full three-second lifetime"
+    );
     describe(&shell, cx, "/captures/second.iqw");
     ready(&shell, cx);
     advance(cx, 1);
@@ -124,7 +128,7 @@ fn a_new_ready_or_document_does_not_inherit_an_older_timeout(cx: &mut TestAppCon
         visible(cx),
         "old document deadline cannot hide new document"
     );
-    advance(cx, 4);
+    advance(cx, 2);
     assert!(!visible(cx));
 }
 
@@ -161,7 +165,7 @@ fn shortcut_completion_expires_with_stationary_pointer_but_progress_does_not(
         visible(cx),
         "accepted completion reappears without pointer motion"
     );
-    advance(cx, 5);
+    advance(cx, 3);
     assert!(!visible(cx));
 }
 
@@ -170,7 +174,7 @@ fn rejected_completion_does_not_postpone_ready_expiry(cx: &mut TestAppContext) {
     let _cleanup = crate::test_context::cleanup(cx);
     let (shell, cx) = open(cx);
     ready(&shell, cx);
-    advance(cx, 4);
+    advance(cx, 2);
     shell.update_in(cx, |shell, window, cx| {
         let generation = shell
             .file

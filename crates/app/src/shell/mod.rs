@@ -760,7 +760,7 @@ impl Shell {
         self.ready_status_dismissed = false;
         self.ready_status_timeout = Some(cx.spawn_in(window, async move |shell, cx| {
             cx.background_executor()
-                .timer(std::time::Duration::from_secs(5))
+                .timer(std::time::Duration::from_secs(3))
                 .await;
             let _ = shell.update_in(cx, |shell, _, cx| {
                 let current = shell.ready_status_epoch == epoch

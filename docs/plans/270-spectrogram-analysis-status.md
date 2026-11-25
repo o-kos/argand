@@ -75,7 +75,7 @@ The full local gate passed: formatting, all-target Clippy, 974 tests with zero f
 The owner requested gray text matching the status bar and automatic disappearance when a shortcut changes the scale and no later pointer input arrives. The coordinator relayed the working interpretation that this refers to the corner analysis status notice, rather than its separate hover timing Tooltip, and the concrete five-second delay. Continue under that stated interpretation unless the owner corrects it.
 
 - Use the same `muted_foreground` theme token as the status bar, only for analysis status. The shared Saved notice keeps its established styling.
-- Every accepted Ready presentation gets a five-second lifetime. Ongoing Opening/Analyzing progress and failure details do not expire through this timer. Existing input dismissal remains immediate.
+- Every accepted Ready presentation gets a three-second lifetime, following the later owner adjustment below. Ongoing Opening/Analyzing progress and failure details do not expire through this timer. Existing input dismissal remains immediate.
 - Shell continues to own presentation state. Retain one ordinary cancellable toolkit task, tied to document identity and presentation epoch, so an older timeout cannot hide newer completion or another document. Cancel pending expiry on input, document replacement and accepted non-Ready status. Timeout changes only Ready visibility and never clears a Saved notice.
 - Keep analysis generations, scheduling, cancellation, source data and toolkit graph unchanged. No polling or new widget is introduced.
 
@@ -89,13 +89,13 @@ The owner requested gray text matching the status bar and automatic disappearanc
 
 Earlier gate and production observations above describe the preceding submitted behavior. They do not establish these new feedback criteria. Keep the plan active and PR Draft until current evidence and remaining acceptance are resolved.
 
-Current feedback validation passed formatting, all-target Clippy,978tests with zero failures/ignores, then release build. The exact release showed muted Ready text in both themes/orientations on isolated native X11. With the pointer parked outside the spectrum, a frequency-zoom shortcut produced visible Ready at roughly0.7–0.8seconds and it disappeared by6.3–6.4seconds without intervening input. Toolkit-clock tests separately verify the exact five-second boundary, non-expiring progress and stale/input/document safety. This pass did not repeat native minimum-size/save scenarios or the original unperformed checks above. Remaining owner and other-platform acceptance still keeps this plan active and PR Draft.
+Previous five-second feedback validation passed formatting, all-target Clippy,978tests with zero failures/ignores, then release build. The exact release showed muted Ready text in both themes/orientations on isolated native X11. With the pointer parked outside the spectrum, a frequency-zoom shortcut produced visible Ready at roughly0.7–0.8seconds and it disappeared by6.3–6.4seconds without intervening input. Toolkit-clock tests separately verify the exact five-second boundary, non-expiring progress and stale/input/document safety. This pass did not repeat native minimum-size/save scenarios or the original unperformed checks above. Remaining owner and other-platform acceptance still keeps this plan active and PR Draft.
 
 ## Owner feedback: three-second completion lifetime
 
 The owner now explicitly requests three seconds instead of five. This supersedes the previous delay decision only. Keep the established Shell task, cancellation/identity guards, input dismissal, muted styling, progress and Saved behavior unchanged. Risk remains Class A for the combined branch and timer behavior, with the same coordinator/executor/reviewer assignments above.
 
-- [ ] Change the Ready timeout to three seconds and update fake-clock boundary/restart/rejection tests.
-- [ ] Update current architecture/changelog wording while preserving earlier five-second evidence as historical.
+- [x] Change the Ready timeout to three seconds and update fake-clock boundary/restart/rejection tests.
+- [x] Update current architecture/changelog wording while preserving earlier five-second evidence as historical.
 - [ ] Run the mandatory full local gate, then observe the affected stationary-pointer shortcut scenario in the exact rebuilt production binary on task-owned Xvfb.
 - [ ] Obtain current-revision independent review and update the existing Draft PR without claiming remaining owner/platform acceptance.
